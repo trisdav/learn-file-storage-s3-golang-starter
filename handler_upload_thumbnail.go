@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"net/http"
 	"io"
-	"encoding/base64"
+	"os"
+	"strings"
+	"errors"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
@@ -66,12 +68,40 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return	
 	}
 
-	newTn64 := fmt.Sprintf("data:%s;base64,%s",media,base64.StdEncoding.EncodeToString(tData))
-	vid.ThumbnailURL = &newTn64
+	// Store image
+		//Build url
+	ext, imgErr := getImgExt(media) 
+	if imgErr != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid image format", imgErr)
+		return
+	}
+	
+			//http://localhost:<port>/assets/<videoID>.<file_extension>
+	imagePath := fmt.Sprintf("http://localhost:8091/assets/%s.%s",videoID,ext)
+	vid.ThumbnailURL = &imagePath
+		// write image image
+	writErr := os.WriteFile(fmt.Sprintf("assets/%s.%s",videoID,ext), tData,0644)
+	if writErr != nil {
+		respondWithError(w, http.StatusBadRequest, "Couldn't retrive video data from the database", writErr)
+		return
+	}
+	// Update video data
 	updatErr := cfg.db.UpdateVideo(vid)
 	if updatErr != nil {
 		respondWithError(w, http.StatusBadRequest, "Couldn't update video data in the database", updatErr)
 		return
 	}
 	respondWithJSON(w, http.StatusOK, vid)
+}
+
+func getImgExt(contentType string) (string, error) {
+	parts:=strings.Split(contentType, "/")
+	if len(parts) < 2 {
+		return "", errors.New("Failed to parse extension")
+	}
+	if parts[1] == "png" || parts[1] == "jpeg" || parts[1]=="jpg" {
+		return parts[1], nil
+	} else {
+		return "", errors.New("Invalid file type for image")
+	}	
 }

@@ -1,0 +1,2 @@
+aws s3api head-object --bucket tubely-65365 --key 4KvrBAyX8xSo0vEnFWBJgw..mp4 > /tmp/object_metadata.txt
+aws s3 ls s3://tubely-65365/backups/ > /tmp/s3_listing.txt

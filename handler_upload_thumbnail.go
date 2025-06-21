@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 	"errors"
+	"encoding/base64"
+	"crypto/rand"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
@@ -77,10 +79,20 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 	
 			//http://localhost:<port>/assets/<videoID>.<file_extension>
-	imagePath := fmt.Sprintf("http://localhost:8091/assets/%s.%s",videoID,ext)
+	imgNameBytes := make([]byte,16)
+
+	_, randReadErr := rand.Read(imgNameBytes)
+	if randReadErr != nil {
+		respondWithError(w, http.StatusBadRequest, "Failed to create random image name", randReadErr)
+		return
+	}
+
+	imgName := base64.RawURLEncoding.EncodeToString(imgNameBytes)
+
+	imagePath := fmt.Sprintf("http://localhost:8091/assets/%s.%s",imgName,ext)
 	vid.ThumbnailURL = &imagePath
 		// write image image
-	writErr := os.WriteFile(fmt.Sprintf("assets/%s.%s",videoID,ext), tData,0644)
+	writErr := os.WriteFile(fmt.Sprintf("assets/%s.%s",imgName,ext), tData,0644)
 	if writErr != nil {
 		respondWithError(w, http.StatusBadRequest, "Couldn't retrive video data from the database", writErr)
 		return

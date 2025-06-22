@@ -112,11 +112,23 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 
 	vidName := fmt.Sprintf("%s/%s.%s",prefix,base64.RawURLEncoding.EncodeToString(vidNameBytes), "mp4")
 
+	fastFilePath, processErr := processVideoForFastStart(tmpFile.Name()) 
+	if processErr != nil {
+		respondWithError(w, http.StatusBadRequest, fmt.Sprintf("Failed to set fast start: %v",processErr), processErr)
+		return
+	}
+
+	fastFile, fastErr := os.Open(fastFilePath)
+	if fastErr != nil {
+		respondWithError(w, http.StatusBadRequest, fmt.Sprintf("Failed to open fast start mp4: %v",fastErr), fastErr)
+		return
+	}
+	defer fastFile.Close()
 
 	cloudInput := &s3.PutObjectInput {
 		Bucket: aws.String("tubely-65365"),
 		Key: aws.String(vidName),
-		Body: tmpFile,
+		Body: fastFile,
 		ContentType: aws.String("video/mp4"),
 	}
 	_, cloudErr := cfg.s3Client.PutObject(r.Context(),cloudInput)	
@@ -172,6 +184,20 @@ func getVideoAspectRatio(filePath string) (string,error) {
 	} else {
 		return "other", nil
 	}
+}
+
+func processVideoForFastStart(filePath string) (string, error) {
+	outputPath:=fmt.Sprintf("%s%s",filePath,".processing")
+	cmd := strings.Split(fmt.Sprintf("ffmpeg -i %s -c copy -movflags faststart -f mp4 %s", filePath, outputPath)," ")
+	output := new(bytes.Buffer)
+	exeCmd := exec.Command(cmd[0],cmd[1:]...)
+	exeCmd.Stdout = output
+	exeCmd.Stderr = output
+	execErr := exeCmd.Run()
+	if execErr != nil {
+		return "", errors.New(fmt.Sprintf("Failed to execute ffmpeg fstart: %v",output))
+	}
+	return outputPath, nil
 }
 
 type mp4MetaData struct {

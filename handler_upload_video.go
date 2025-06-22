@@ -13,9 +13,12 @@ import (
 	"strings"
 	"errors"
 	"bytes"
+	"time"
+	"context"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
+	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/database"
 
 )
 
@@ -134,12 +137,12 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	}
 	_, cloudErr := cfg.s3Client.PutObject(r.Context(),cloudInput)	
 	if cloudErr != nil {
-		respondWithError(w, http.StatusBadRequest, "Failed to write to cloud", cloudErr)
+		respondWithError(w, http.StatusBadRequest, "Failed to write to cloud",cloudErr)
 		return
 	}
 
-	videoPath := fmt.Sprintf("http://%s.s3.us-east-2.amazonaws.com/%s",s3Bucket,vidName)
-	vid.VideoURL = &videoPath
+	videoPath := fmt.Sprintf("%s,%s",s3Bucket,vidName)
+	vid.VideoURL = &videoPath // HERE YOU IDIOT
 
 	// Update video data
 	updatErr := cfg.db.UpdateVideo(vid)
@@ -147,7 +150,42 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		respondWithError(w, http.StatusBadRequest, "Couldn't update video data in the database", updatErr)
 		return
 	}
+
+	vid, vidErr := cfg.dbVideoToSignedVideo(vid)
+	if vidErr != nil {
+		respondWithError(w, http.StatusBadRequest, fmt.Sprintf("Failed to get signed video",vidErr),vidErr)
+		return
+	}
 	respondWithJSON(w, http.StatusOK, vid)
+}
+
+func generatePresignedURL(s3Client *s3.Client, bucket, key string, expireTime time.Duration) (string, error) {
+	presigner := s3.NewPresignClient(s3Client)
+
+	req := s3.GetObjectInput {
+		Bucket: aws.String(bucket),
+		Key: aws.String(key),
+	}
+
+	resp, err := presigner.PresignGetObject(context.Background(), &req, func(opts *s3.PresignOptions) {
+		opts.Expires = expireTime
+	})
+	if err != nil {
+		return "", errors.New("Failed to generate presigned url")
+	}
+	return resp.URL, nil
+}
+
+func (cfg *apiConfig) dbVideoToSignedVideo(video database.Video) (database.Video, error) {
+	if video.VideoURL != nil {
+		splt := strings.Split(*video.VideoURL,",")
+		signUrl, signErr := generatePresignedURL(cfg.s3Client, splt[0],splt[1], time.Hour*3)
+		if signErr != nil {
+			return video, errors.New(fmt.Sprintf("Failed to fetch presigned url: %v",signErr))
+		}
+		video.VideoURL = &signUrl
+	}
+	return video, nil
 }
 
 func getMp4Ext(contentType string) (string, error) {

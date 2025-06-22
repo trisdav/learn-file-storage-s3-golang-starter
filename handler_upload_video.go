@@ -125,8 +125,9 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	}
 	defer fastFile.Close()
 
+	s3Bucket := cfg.s3Bucket
 	cloudInput := &s3.PutObjectInput {
-		Bucket: aws.String("tubely-65365"),
+		Bucket: aws.String(s3Bucket),
 		Key: aws.String(vidName),
 		Body: fastFile,
 		ContentType: aws.String("video/mp4"),
@@ -137,7 +138,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	videoPath := fmt.Sprintf("http://tubely-65365.s3.us-east-2.amazonaws.com/%s",vidName)
+	videoPath := fmt.Sprintf("http://%s.s3.us-east-2.amazonaws.com/%s",s3Bucket,vidName)
 	vid.VideoURL = &videoPath
 
 	// Update video data
